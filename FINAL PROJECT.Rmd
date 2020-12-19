@@ -1,0 +1,308 @@
+---
+title: "Final Econometrics Project"
+author: "by Tamires Amorim"
+date: "12/12/2020"
+output: github_document
+        html_document
+---
+
+## Racial Wage Gap: Analysis of difference in wages between black and white Americans
+
+The present analysis aims to observe how much of the difference in wages between white and blacks in the United States can be explained by their differences in observed attributes as educational attainments and community attributes. 
+
+The data extracted comes from the IPUMS/CPS database. Courtesy of Sarah Flood, Miriam King, Renae Rodgers, Steven Ruggles and J. Robert Warren. Integrated Public Use Microdata Series, Current Population Survey: Version 8.0 [dataset]. Minneapolis, MN: IPUMS, 2020. https://doi.org/10.18128/D030.V8.0
+
+Installing necessary packages: 
+```{r packages, include = FALSE}
+library(data.table)
+library(dplyr)
+library(jtools)
+library("naniar")
+library(ggplot2)
+library("ipumsr")
+library(AER)
+library("oaxaca")
+library(igraph)
+```
+
+The data was collected from (https://cps.ipums.org/). The selection of the variables were based on the requirements of the question in analysis. Importing the data from local directory below:
+```{r ddi, include=FALSE}
+ddi <- read_ipums_ddi("cps_00006.xml")
+data <- read_ipums_micro(ddi)
+detach()
+attach(data)
+```
+
+Summary of the data: 
+```{r}
+glimpse(data)
+```
+```{r}
+dim(data)
+summary(data)
+```
+
+Organizing the data for analysis purposes. Follow descriptive categories according to the IPUMS/CPS code book:
+```{r}
+#individual component:
+Age <- as.numeric(data$AGE)
+male <- as.numeric(data$SEX == 1)
+married <- as.numeric(data$MARST <= 2)
+sepdivwid <- as.numeric(data$MARST == 3 | data$MARST == 4 | data$MARST == 5) 
+unmarried  <- as.numeric(data$MARST == 6)
+
+#racial component:
+White <- as.numeric(data$RACE == 100)
+black <- as.numeric(data$RACE == 200)
+Amindian <- as.numeric(data$RACE == 300)
+Asian <- as.numeric(data$RACE == 650 | data$RACE == 651)
+race_oth <- as.numeric(data$RACE >= 830)
+
+#educational attainments:
+educ_hs <- as.numeric(data$EDUC == 073)
+educ_smcoll <- as.numeric(data$EDUC == 080 | data$EDUC == 081)
+educ_as <- as.numeric(data$EDUC == 090 | data$EDUC == 091 | data$EDUC == 092)
+educ_bach <- as.numeric(data$EDUC == 100| data$EDUC == 110 | data$EDUC == 111 | data$EDUC == 120 | data$EDUC == 121 | data$EDUC == 122)
+educ_adv <- as.numeric(data$EDUC == 123 | data$EDUC == 124| data$EDUC == 125)
+
+#labor force components:
+work_fullt <- as.numeric(data$FULLPART == 1)
+work_partt <- as.numeric(data$FULLPART == 2)
+lbforce <- as.numeric(data$LABFORCE == 2)
+work_week <- as.numeric(data$WKSWORK2 == 3)
+empl_pvt <- as.numeric(data$CLASSWKR == 21)
+
+#income and wage components:
+inc_tot <- data$INCTOT
+inc_wage <- data$INCWAGE
+hour_wage <- data$HOURWAGE
+earn_wk <- data$EARNWEEK
+
+#geographic component:
+city <- as.numeric(data$METRO == 2)
+REGION <- as.factor(REGION)
+levels(REGION) <- c("NORTHEAST REGION", 
+                    "New England Division", 
+                    "Middle Atlantic Division",
+                    "MIDWEST REGION",
+                    "East North Central Division",
+                    "West North Central Division",
+                    "SOUTH REGION",
+                    "South Atlantic Division",
+                    "East South Central Division",
+                    "West South Central Division",
+                    "WEST REGION",
+                    "Mountain Division",
+                    "Pacific Division")
+```
+
+Summary to check key components:
+```{r}
+is.factor(REGION)
+```
+```{r}
+summary(male)
+```
+
+Data frame:
+```{r}
+dat_CPS <- data.frame(Age, male, White, black, Amindian, Asian, race_oth, educ_hs, educ_smcoll, educ_as, educ_bach, educ_adv, married, sepdivwid, unmarried, work_fullt, work_partt, lbforce, empl_pvt, work_week, earn_wk, inc_tot, inc_wage, hour_wage, city, REGION)
+dim(dat_CPS)
+summary(dat_CPS)
+```
+
+## Models
+
+### Linear Regressions
+
+Starting with a simple regression as baseline, before the wage decomposition models. 
+
+#### Model 1: 
+
+The group chosen are black workers from 25 to 64 years old, and paid by the hour worked,the goal is to evaluate the earnings by the week as the dependent variable, and age, race and educational attainments as independent variables.
+```{r}
+use_varb <- (Age>=25) & (Age<=64) & (black) & (PAIDHOUR == 2) 
+dat_use1<-subset(dat_CPS,use_varb)
+dim(dat_use1)
+
+model1<-lm( log(earn_wk) ~ Age + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv, data=dat_use1) 
+summary(model1)
+```
+Testing the model, to determine whether there are any statistically significant differences between the means of the independent variables. 
+```{r}
+coeftest(model1)
+exp(model1$coefficients)
+plot(coef(model1))
+anova(model1)
+```
+
+#### Model 1.1:
+The group chosen are white workers from 25 to 64 years old, and paid by the hour worked,the goal is to evaluate the earnings by the week as the dependent variable, and age, race and educational attainments as independent variables.
+```{r}
+use_varb1.1 <- (Age>=25) & (Age<=64) & (White) & (PAIDHOUR == 2)
+dat_use1.1<-subset(dat_CPS,use_varb1.1)
+dim(dat_use1.1)
+
+model1.1<-lm( log(earn_wk) ~ Age + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv, data=dat_use1.1) 
+summary(model1.1)
+```
+
+```{r}
+coeftest(model1.1)
+exp(model1.1$coefficients)
+plot(coef(model1.1))
+anova(model1.1)
+```
+
+#### Model 2: 
+Comparing with log hour-wage: The group chosen are male black workers from 25 to 64 years old, this new subset does not use the variable Paid by the hour worked since the depended variable will be the hour wage, and age, race and educational attainments as independent variables as the first model. 
+```{r}
+use_varb2 <- (Age>=25) & (Age<=64) & (black) & male
+dat_use2<-subset(dat_CPS,use_varb2)
+dim(dat_use2)
+
+model2<-lm( log(hour_wage) ~ Age + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv, data=dat_use2) 
+summary(model2)
+```
+
+```{r}
+coeftest(model2)
+exp(model2$coefficients)
+plot(coef(model2))
+anova(model2)
+```
+
+#### Model 2.2: 
+Comparing with log hour-wage: The group chosen are male white workers from 25 to 64 years old, this new subset does not use the variable Paid by the hour worked since the depended variable will be the hour wage, and age, race and educational attainments as independent variables as the model above. 
+```{r}
+use_varb2.2 <- (Age>=25) & (Age<=64) & (White) & male
+dat_use2.2<-subset(dat_CPS,use_varb2.2)
+dim(dat_use2.2)
+
+model2.2<-lm( log(hour_wage) ~ Age + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv, data=dat_use2.2) 
+summary(model2.2)
+```
+
+```{r}
+coeftest(model2.2)
+exp(model2.2$coefficients)
+plot(coef(model2.2))
+anova(model2.2)
+```
+### Evaluation of previous models:
+
+From previous models, it was possible to draw some valuable conclusions on what variables and interactions might be interesting in adding on the Oaxaca model. 
+Models 2 and 2.2, given its higher number of observations and differences in the significance levels of the age and educational attainments variables, were chosen to further the investigation. 
+
+
+## Blind-Oaxaca Decomposition Models:
+
+The Blind-Oaxaca decomposition method will be used to explain the wage gap between white and black workers. 
+
+### Model A: Observations on educational attainments
+
+Subset for the same age group as the base models, and adding males white or black workers into the main subset. 
+```{r}
+use_varb.A <- (Age>=25) & (Age<=64) & (White | black) & male
+dat_use.A <-subset(dat_CPS,use_varb.A)
+```
+
+```{r}
+dim(dat_use.A)
+```
+
+
+### Oaxaca Model 1: Wage differences and educational attainments
+
+Start by decomposing the wage gap between black and white workers. The wage gap could be due to age or educational attainments. The main formula takes into consideration log hourly wages as the dependent variable and age and educational attainments as dependent variables. The boostrapped standard errors are calculated based on 100 replicates.  
+```{r}
+oaxaca_model <- oaxaca(log(hour_wage) ~ Age + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv |White| educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv,data=dat_use.A, group.weights = NULL, R = 100)
+```
+First observing the number of observations for each group to help in the identification of who is in the group A and who belongs into the group B.
+The summary points that group A corresponds to black workers and group B to white workers, numbers observed in model 2 and 2.2 respectively. The n pooled represents the total of observations. 
+```{r}
+oaxaca_model$n
+```
+Following, the mean hourly wage for each group, where black workers earns 0.022 cents more than white workers, although as observed before the number of observations pooled for black workers were less than white workers, which might have brought the unexpected return. 
+```{r}
+oaxaca_model$y
+```
+#### Threefold Blinder-Oaxaca
+
+The threefold Blinder-Oaxaca decomposition suggests that approximately 0.017 cents can be attributed to group differences in age or education (endowments), 0.03 due to differences in the coefficients and 0.008 cents can be accounted by the interaction of the two. 
+In the plot it is observed the estimation results for age and education attainments with the error bars that indicate 95% confidence intervals.
+```{r}
+oaxaca_model$threefold$overall
+plot(oaxaca_model, components = c("endowments", "coefficients"))
+```
+
+From the plot endowments only education in the bachelor, advanced degree and high school seems statistically significant for the conclusion in the wage gap differences, which is understandable given that higher education attainments implies higher earnings across different groups.From the summary bellow, we can see the differences in between the education attainments: 
+
+```{r}
+summary(oaxaca_model$reg$reg.pooled.2)$coefficients["educ_hs",]
+```
+```{r}
+summary(oaxaca_model$reg$reg.pooled.2)$coefficients["educ_adv",]
+```
+
+When analyzing differences in ages between white and black workers the difference in earnings, it is not possible to find conclusive information given that it is extremely low portion in the explanation of the gap. 
+```{r}
+oaxaca_model$beta$beta.diff["Age"]
+```
+
+#### Twofold decomposition
+
+The twofold decomposition, points to consistent results with what was observed on the threefold, here the difference in hourly payments is still due to different educational attainments.  
+```{r}
+plot(oaxaca_model, decomposition = "twofold", group.weight = -1)
+```
+Confirming the trend above observed, educational attainments, and specifically high school education is the main driver on the wage gap between both groups. 
+```{r}
+plot(oaxaca_model, decomposition = "twofold", group.weight = -1, unexplained.split = TRUE, components = c("unexplained A","unexplained B"), component.labels = c("unexplained A" = "black workers", "unexplained B" = "white workers"), variables = c("Age", "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"), variable.labels = c("AGE" = "age", "EDUC" = "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"))
+```
+
+The unexplained portion on the twofold decomposition, when comparing the variables and the races, still holds the differences in the high school level. 
+```{r}
+plot(oaxaca_model, decomposition = "twofold", group.weight = -1, unexplained.split = TRUE, components = c("unexplained A","unexplained B"), component.labels = c("unexplained A" = "black workers" , "unexplained B" = "white workers"), component.left = TRUE, variables = c("Age", "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"), variable.labels = c("AGE" = "age", "EDUC" = "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"))
+```
+
+### Oaxaca Model 2: Additional observations for employees that workes on private sector and live in the city
+
+The new subset takes into consideration only workers in the private sector that lives in the city, in this subset there is a lower number of observations. 
+```{r}
+use_varb.B <- (Age>=25) & (Age<=64) & (White | black) & male & city & empl_pvt
+dat_use.B <-subset(dat_CPS,use_varb.B)
+```
+
+Adding marital status in the model:
+```{r}
+oaxaca_model1 <- oaxaca(log(hour_wage) ~ Age + married + educ_hs + educ_smcoll + educ_as + educ_bach + educ_adv |White,data=dat_use.B, group.weights = NULL, R = 100)
+```
+In the same way the number of black workers is smaller than white workers, although the difference in earnings is higher and the white workers earn more than the black employees. 
+```{r}
+oaxaca_model1$n
+oaxaca_model1$y
+oaxaca_model1$threefold$overall
+```
+Differently from the first model the threefold decomposition suggests that approximately 0.05 cents can be attributed to group differences in age, education or marital status  (endowments), 0.012 due to differences in the coefficients and 0.014 cents can be accounted by the interaction of the two. 
+In the plot it is observed the estimation results for age and education attainments with the error bars that indicate 95% confidence intervals.
+```{r}
+plot(oaxaca_model1, components = c("endowments", "coefficients"))
+```
+In the endowments plot marital status and advanced educational attainments have a higher level of significance than the first model, probably due to the fact that the private sector is more selective in the higher education. 
+
+#### Twofold decomposition
+
+The twofold decomposition, points to different results from the threefold because Age is more significant than the other variables.
+```{r}
+plot(oaxaca_model1, decomposition = "twofold", group.weight = -1, unexplained.split = TRUE, components = c("unexplained A","unexplained B"), component.labels = c("unexplained A" = "black workers", "unexplained B" = "white workers"), variables = c("Age", "married", "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"), variable.labels = c("AGE" = "age", "MARST" = "married", "EDUC" = "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"))
+```
+By variable comparison:
+```{r}
+plot(oaxaca_model1, decomposition = "twofold", group.weight = -1, unexplained.split = TRUE, components = c("unexplained A","unexplained B"), component.labels = c("unexplained A" = "black workers" , "unexplained B" = "white workers"), component.left = TRUE, variables = c("Age", "married", "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"), variable.labels = c("AGE" = "age", "MARST" = "married", "EDUC" = "educ_hs", "educ_smcoll", "educ_as", "educ_bach", "educ_adv"))
+```
+
+
+
+
+
