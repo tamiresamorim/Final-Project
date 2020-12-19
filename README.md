@@ -16,7 +16,6 @@ Integrated Public Use Microdata Series, Current Population Survey:
 Version 8.0 \[dataset\]. Minneapolis, MN: IPUMS, 2020.
 <https://doi.org/10.18128/D030.V8.0>
 
-Installing necessary packages:
 
 The data was collected from (<https://cps.ipums.org/>). The selection of
 the variables were based on the requirements of the question in
