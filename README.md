@@ -1,4 +1,3 @@
-# Final-Project
 Final Econometrics Project
 ================
 by Tamires Amorim
